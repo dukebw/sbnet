@@ -34,6 +34,14 @@
 #include "op_utils.h"
 #include "reduce_mask.h"
 
+/**
+ * NOTE(brendan): TensorFlow uses TF_LoadLibrary and SWIG (see ) in order to
+ * load Python modules corresponding to the ops exposed by files with
+ * REGISTER_OP, e.g., ReduceMaskOp.
+ * See
+ * https://github.com/tensorflow/tensorflow/blob/1f21340b1ef115f643d1c41f952e655274f934e9/tensorflow/python/framework/load_library.py#L39.
+ */
+
 using namespace tensorflow;
 using std::cout;
 using std::endl;
@@ -65,6 +73,13 @@ template <typename T> struct ReduceMaskFunctor<CPUDevice, T> {
         bool avgPool
         )
     {
+        /**
+         * NOTE(brendan): This function is iterating over all blocks in the
+         * mask (taking into account edges with bOffs*), and if the (average or
+         * max) pooled values in the block are over a threshold the block is
+         * marked as active, added to the activeBlockIndices, and binCounts
+         * (initialized to zero) is incremented.
+         */
         int count = 0;
         assert(numBins == 1);
         const int C = 1;
@@ -82,7 +97,7 @@ template <typename T> struct ReduceMaskFunctor<CPUDevice, T> {
                 if (avgPool)
                     sum += val;
                 else
-                    active |= (val > threshold);
+                    active = active || (val > threshold);
             } } }
             if (avgPool)
                 active = ( (sum/(bSzH*bSzW)) > threshold );
@@ -115,7 +130,6 @@ public:
     explicit ReduceMaskOp(OpKernelConstruction* context)
         : OpKernel(context)
     {
-        std::vector<int> bsize, bstride, boffset;
         OP_REQUIRES_OK(context, context->GetAttr("avgpool", &avgpool_));
         OP_REQUIRES_OK(context, context->GetAttr("tol", &tol_));
     }
@@ -154,6 +168,10 @@ public:
         //       bCntH, bCntW, bSzH, bSzW, bStrH, bStrW, bOffsH0, bOffsW0);
         //fflush(stdout);
 
+        /**
+         * NOTE(brendan): Allocates the array of 3-tuple block indices
+         * (example i, center x y).
+         */
         // Initializes output.
         // TODO: try to find a way not to redo the allocation in Compute
         Tensor* activeBlockIndices = NULL;
@@ -164,6 +182,10 @@ public:
         // output type is known from REGISTER_OP macro
         OP_REQUIRES_OK(context, context->allocate_output(0, activeBlockShape, &activeBlockIndices));
 
+        /**
+         * NOTE(brendan): Allocates tensor for ``counts per bin of active
+         * blocks''.
+         */
         unsigned int numBins = 1;
         unsigned int binSize = (maxIndices + numBins - 1) / numBins;
         TensorShape binCountsShape;
@@ -247,4 +269,3 @@ REGISTER_CPU(float);
 REGISTER_GPU(float);
 
 #endif // GOOGLE_CUDA
-

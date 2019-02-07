@@ -77,5 +77,3 @@ y = sbnet_module.sparse_scatter(
 
 sess = tf.Session()
 y_output, = sess.run([y])
-
-

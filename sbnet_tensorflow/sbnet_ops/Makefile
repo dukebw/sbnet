@@ -19,6 +19,8 @@ LOCAL_INC = /usr/local # needed for build to work with TF 1.8 since it's looking
 CUDA_LIB = /usr/local/cuda/lib64
 TF_INC   = $(shell python -c "import tensorflow; print(tensorflow.sysconfig.get_include())")
 TF_LIB   = $(shell python -c "import tensorflow as tf; print(tf.sysconfig.get_lib())")
+# NOTE(brendan): Seems like a hacky way to disable C++11 ABI for specifically
+# gcc 5.4.
 GCC5     = $(shell g++ --version | grep 5.4 | wc -l)
 ifeq ($(GCC5), 1)
 ABI      =-D_GLIBCXX_USE_CXX11_ABI=0
@@ -47,6 +49,8 @@ build/sparse_gather.cu.o: sparse_gather.cu sparse_blocks.cu.h
 	mkdir -p build
 	nvcc $(NVCCFLAGS) -c $< -o $@
 
+# NOTE(brendan): should be two files with TF op definitions: sparse_gather.cc
+# and reduce_mask.cc, which link the CUDA objects.
 build/libsbnet.so: $(CUOBJS) sparse_gather.cc reduce_mask.cc
 	ln -sf build/libsbnet.so
 	mkdir -p build
@@ -57,4 +61,3 @@ build/libsbnet.so: $(CUOBJS) sparse_gather.cc reduce_mask.cc
 		-I $(TF_INC) \
 		-I $(CUDA_INC) \
 		-D GOOGLE_CUDA=1 -fPIC -lcudart -L$(CUDA_LIB) -L$(TF_LIB) -ltensorflow_framework -lgomp $(ABI)
-
